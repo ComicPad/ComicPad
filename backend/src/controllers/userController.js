@@ -1,4 +1,4 @@
-import { User, Comic, Transaction } from '../models/index.js';
+import { User, Comic, Listing } from '../models/index.js';
 import logger from '../utils/logger.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import ipfsService from '../services/ipfsService.js';
@@ -33,28 +33,16 @@ export const getUserById = asyncHandler(async (req, res) => {
   };
 
   if (user.isCreator) {
-    const Comic = (await import('../models/index.js')).Comic;
-    const Collection = (await import('../models/index.js')).Collection;
-    
     stats.comics = await Comic.countDocuments({ creator: id, status: 'published' });
-    stats.collections = await Collection.countDocuments({ creator: id });
-    
-    // Get sales stats
-    const transactions = await Transaction.aggregate([
-      { $match: { 'from.user': user._id, status: 'completed' } },
-      {
-        $group: {
-          _id: null,
-          totalSales: { $sum: 1 },
-          totalVolume: { $sum: '$price' }
-        }
-      }
-    ]);
-    
-    if (transactions.length > 0) {
-      stats.totalSales = transactions[0].totalSales;
-      stats.totalVolume = transactions[0].totalVolume;
-    }
+
+    // Get sales stats from listings
+    const soldListings = await Listing.find({
+      seller: user._id,
+      status: 'sold'
+    });
+
+    stats.totalSales = soldListings.length;
+    stats.totalVolume = soldListings.reduce((sum, listing) => sum + (listing.soldPrice || 0), 0);
   }
 
   res.json({
@@ -401,23 +389,25 @@ export const getActivity = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { page = 1, limit = 20 } = req.query;
 
-  const activities = await Transaction.find({
+  // Get listings where user was seller or buyer
+  const activities = await Listing.find({
     $or: [
-      { 'from.user': id },
-      { 'to.user': id }
+      { seller: id },
+      { buyer: id }
     ]
   })
-    .populate('comic', 'title content.coverImage')
-    .populate('from.user', 'username profile.displayName profile.avatar')
-    .populate('to.user', 'username profile.displayName profile.avatar')
+    .populate('episode', 'title content.coverImage')
+    .populate('comic', 'title')
+    .populate('seller', 'username profile.displayName profile.avatar')
+    .populate('buyer', 'username profile.displayName profile.avatar')
     .limit(limit * 1)
     .skip((page - 1) * limit)
     .sort({ createdAt: -1 });
 
-  const count = await Transaction.countDocuments({
+  const count = await Listing.countDocuments({
     $or: [
-      { 'from.user': id },
-      { 'to.user': id }
+      { seller: id },
+      { buyer: id }
     ]
   });
 

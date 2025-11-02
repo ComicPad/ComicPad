@@ -1,5 +1,5 @@
 import express from 'express';
-import { Comic, Collection, User } from '../models/index.js';
+import { Comic, User, Episode } from '../models/index.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 
 const router = express.Router();
@@ -42,14 +42,16 @@ router.get('/', asyncHandler(async (req, res) => {
       .limit(parseInt(limit));
   }
 
-  if (type === 'all' || type === 'collections') {
-    results.collections = await Collection.find({
+  if (type === 'all' || type === 'episodes') {
+    results.episodes = await Episode.find({
+      status: 'published',
       $or: [
-        { name: { $regex: q, $options: 'i' } },
+        { title: { $regex: q, $options: 'i' } },
         { description: { $regex: q, $options: 'i' } }
       ]
     })
       .populate('creator', 'username profile')
+      .populate('comic', 'title')
       .limit(parseInt(limit));
   }
 

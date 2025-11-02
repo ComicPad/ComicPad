@@ -105,17 +105,19 @@ app.get('/health', (req, res) => {
 
 // API Routes
 import authRoutes from './routes/authRoutes.js';
-import comicRoutes from './routes/comicRoutes.js';
 import userRoutes from './routes/userRoutes.js';
-import marketplaceRoutes from './routes/marketplaceRoutes.js';
 import readerRoutes from './routes/readerRoutes.js';
 import searchRoutes from './routes/searchRoutes.js';
 import statsRoutes from './routes/statsRoutes.js';
 
+// Enhanced Routes (New Comic Pad Functionality)
+import comicRoutesEnhanced from './routes/comicRoutesEnhanced.js';
+import marketplaceRoutesEnhanced from './routes/marketplaceRoutesEnhanced.js';
+
 app.use('/api/v1/auth', authRoutes);
-app.use('/api/v1/comics', comicRoutes);
+app.use('/api/v1/comics', comicRoutesEnhanced); // Enhanced comic routes
 app.use('/api/v1/users', userRoutes);
-app.use('/api/v1/marketplace', marketplaceRoutes);
+app.use('/api/v1/marketplace', marketplaceRoutesEnhanced); // Enhanced marketplace routes
 app.use('/api/v1/reader', readerRoutes);
 app.use('/api/v1/search', searchRoutes);
 app.use('/api/v1/stats', statsRoutes);

@@ -2,6 +2,13 @@
 
 A decentralized comic book publishing and NFT marketplace platform built on Hedera Hashgraph, featuring native HTS NFTs, IPFS storage, and an interactive comic reader.
 
+## 📖 Documentation
+
+- **[Quick Start Guide](QUICKSTART.md)** - Get running in 5 minutes
+- **[Complete Setup Guide](SETUP_GUIDE.md)** - Detailed installation and configuration
+- **[Implementation Summary](IMPLEMENTATION_SUMMARY.md)** - What was built and how it works
+- **[API Reference](backend/src/controllers/)** - Complete endpoint documentation
+
 ## 🚀 Features
 
 ### Core Platform

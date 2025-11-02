@@ -1,4 +1,4 @@
-import { Listing, Comic, Transaction, Offer } from '../models/index.js';
+import { Listing, Comic } from '../models/index.js';
 import hederaService from './hederaService.js';
 import logger from '../utils/logger.js';
 

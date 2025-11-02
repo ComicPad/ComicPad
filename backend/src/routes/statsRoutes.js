@@ -1,5 +1,5 @@
 import express from 'express';
-import { Comic, Collection, User, Transaction, Listing } from '../models/index.js';
+import { Comic, User, Listing } from '../models/index.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { getMarketplaceStats, getPlatformStats } from '../controllers/statsController.js';
 
@@ -13,10 +13,10 @@ router.get('/platform', asyncHandler(async (req, res) => {
   const totalComics = await Comic.countDocuments({ status: 'published' });
   const totalCreators = await User.countDocuments({ isCreator: true });
   const totalCollectors = await User.countDocuments();
-  
-  const volumeData = await Transaction.aggregate([
-    { $match: { status: 'completed' } },
-    { $group: { _id: null, totalVolume: { $sum: '$price' } } }
+
+  const volumeData = await Listing.aggregate([
+    { $match: { status: 'sold' } },
+    { $group: { _id: null, totalVolume: { $sum: '$soldPrice' } } }
   ]);
 
   const totalVolume = volumeData.length > 0 ? volumeData[0].totalVolume : 0;
@@ -25,17 +25,17 @@ router.get('/platform', asyncHandler(async (req, res) => {
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
 
-  const volume24h = await Transaction.aggregate([
+  const volume24h = await Listing.aggregate([
     {
       $match: {
-        status: 'completed',
-        createdAt: { $gte: yesterday }
+        status: 'sold',
+        soldAt: { $gte: yesterday }
       }
     },
     {
       $group: {
         _id: null,
-        volume: { $sum: '$price' },
+        volume: { $sum: '$soldPrice' },
         sales: { $sum: 1 }
       }
     }

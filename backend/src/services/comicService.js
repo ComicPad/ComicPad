@@ -1,12 +1,398 @@
-import { Comic, Collection, User, Transaction } from '../models/index.js';
+import { Comic, Episode, Listing, ReadHistory, User } from '../models/index.js';
 import hederaService from './hederaService.js';
 import ipfsService from './ipfsService.js';
 import logger from '../utils/logger.js';
 
 /**
- * Comic business logic service
+ * Enhanced Comic business logic service for Comic Pad
+ * Implements complete workflow: Upload → Store → Mint → List → Read
  */
 class ComicService {
+  /**
+   * STEP 1: Create Comic Collection (Project)
+   * Creates a new comic series with HTS collection
+   */
+  async createComic(creatorData) {
+    try {
+      const {
+        userId,
+        accountId,
+        title,
+        description,
+        series,
+        genres,
+        tags,
+        coverImage,
+        royaltyPercentage,
+        maxSupply
+      } = creatorData;
+
+      logger.info(`Creating comic collection: ${title}`);
+
+      // Create HTS NFT collection
+      const collectionResult = await hederaService.createCollection({
+        name: title,
+        symbol: title.substring(0, 4).toUpperCase(),
+        creatorAccountId: accountId,
+        royaltyPercentage: royaltyPercentage || 10,
+        maxSupply: maxSupply || 0
+      });
+
+      // Upload cover to IPFS if provided
+      let coverData = null;
+      if (coverImage) {
+        coverData = await ipfsService.uploadFile(coverImage, {
+          name: `${title}-cover`,
+          metadata: { type: 'comic-cover', title }
+        });
+      }
+
+      // Create comic record in database
+      const comic = await Comic.create({
+        title,
+        description,
+        series,
+        genres,
+        tags,
+        creator: userId,
+        creatorAccountId: accountId,
+        collectionTokenId: collectionResult.tokenId,
+        royaltyPercentage: royaltyPercentage || 10,
+        maxSupply: maxSupply || 0,
+        coverImage: coverData ? {
+          ipfsHash: coverData.ipfsHash,
+          url: coverData.url
+        } : null,
+        status: 'draft'
+      });
+
+      logger.info(`Comic created successfully: ${comic._id}`);
+
+      return {
+        comic,
+        tokenId: collectionResult.tokenId,
+        explorerUrl: collectionResult.explorerUrl
+      };
+    } catch (error) {
+      logger.error('Error creating comic:', error);
+      throw new Error(`Failed to create comic: ${error.message}`);
+    }
+  }
+
+  /**
+   * STEP 2: Upload and Store Episode
+   * Handles file upload, IPFS storage, and metadata creation
+   */
+  async createEpisode(episodeData) {
+    try {
+      const {
+        comicId,
+        userId,
+        title,
+        description,
+        episodeNumber,
+        coverImage,
+        pages,
+        mintPrice,
+        readPrice,
+        maxSupply
+      } = episodeData;
+
+      logger.info(`Creating episode ${episodeNumber} for comic ${comicId}`);
+
+      // Get comic
+      const comic = await Comic.findById(comicId);
+      if (!comic) {
+        throw new Error('Comic not found');
+      }
+
+      // Verify creator
+      if (comic.creator.toString() !== userId) {
+        throw new Error('Unauthorized: Not the comic creator');
+      }
+
+      // Upload to IPFS
+      const comicPackage = await ipfsService.uploadComicPackage({
+        pages,
+        coverImage,
+        metadata: {
+          name: `${comic.title} - Episode ${episodeNumber}`,
+          description,
+          series: comic.title,
+          issueNumber: episodeNumber
+        },
+        comicId: `${comic._id}-ep${episodeNumber}`
+      });
+
+      // Create NFT metadata JSON with proper structure
+      const nftMetadata = {
+        name: `${comic.title} - Episode ${episodeNumber}`,
+        description,
+        creator: comic.creatorAccountId,
+        image: `ipfs://${comicPackage.cover.ipfsHash}`,
+        properties: {
+          series: comic.title,
+          episodeNumber,
+          totalPages: pages.length,
+          contentUri: comicPackage.metadataUri,
+          coverImage: `ipfs://${comicPackage.cover.ipfsHash}`,
+          format: 'comic',
+          type: 'NFT Comic Episode'
+        },
+        attributes: [
+          {
+            trait_type: 'Series',
+            value: comic.title
+          },
+          {
+            trait_type: 'Episode Number',
+            value: episodeNumber
+          },
+          {
+            trait_type: 'Page Count',
+            value: pages.length
+          },
+          {
+            trait_type: 'Creator',
+            value: comic.creatorAccountId
+          }
+        ]
+      };
+
+      // Upload NFT metadata to IPFS
+      const metadataUpload = await ipfsService.uploadJSON(
+        nftMetadata,
+        `${comic._id}-ep${episodeNumber}-metadata.json`
+      );
+
+      // Create episode record
+      const episode = await Episode.create({
+        title,
+        description,
+        episodeNumber,
+        comic: comicId,
+        creator: userId,
+        collectionTokenId: comic.collectionTokenId,
+        content: {
+          metadataUri: metadataUpload.url,
+          metadataHash: metadataUpload.ipfsHash,
+          coverImage: comicPackage.cover,
+          pages: comicPackage.pages.pages.map(p => ({
+            pageNumber: p.pageNumber,
+            ipfsHash: p.original.ipfsHash,
+            url: p.original.url,
+            thumbnail: p.thumbnail.url
+          })),
+          cbz: comicPackage.cbz,
+          totalPages: pages.length
+        },
+        pricing: {
+          mintPrice: mintPrice || 0,
+          readPrice: readPrice || 0,
+          currency: 'HBAR'
+        },
+        supply: {
+          maxSupply: maxSupply || 0,
+          currentSupply: 0
+        },
+        status: 'ready'
+      });
+
+      // Update comic stats
+      await comic.incrementStats('totalEpisodes');
+
+      logger.info(`Episode created successfully: ${episode._id}`);
+
+      return {
+        episode,
+        ipfsData: comicPackage,
+        metadataUri: metadataUpload.url
+      };
+    } catch (error) {
+      logger.error('Error creating episode:', error);
+      throw new Error(`Failed to create episode: ${error.message}`);
+    }
+  }
+
+  /**
+   * STEP 3: Mint NFT for Episode
+   * Mints NFTs on Hedera and records ownership
+   */
+  async mintEpisodeNFT(mintData) {
+    try {
+      const {
+        episodeId,
+        buyerAccountId,
+        quantity
+      } = mintData;
+
+      logger.info(`Minting ${quantity} NFT(s) for episode ${episodeId}`);
+
+      // Get episode
+      const episode = await Episode.findById(episodeId).populate('comic');
+      if (!episode) {
+        throw new Error('Episode not found');
+      }
+
+      // Check if minting is enabled
+      if (!episode.isLive) {
+        throw new Error('Episode is not live for minting');
+      }
+
+      // Check supply limits
+      if (episode.supply.maxSupply > 0) {
+        const remaining = episode.supply.maxSupply - episode.supply.currentSupply;
+        if (quantity > remaining) {
+          throw new Error(`Only ${remaining} NFTs remaining`);
+        }
+      }
+
+      // Mint on Hedera
+      const mintResult = await hederaService.mintNFTs({
+        tokenId: episode.collectionTokenId,
+        metadata: episode.content.metadataHash,
+        quantity
+      });
+
+      // Record minted NFTs
+      for (const serialNumber of mintResult.serialNumbers) {
+        await episode.addMintedNFT(
+          serialNumber,
+          buyerAccountId,
+          mintResult.transactionId
+        );
+      }
+
+      // Update comic stats
+      await episode.comic.incrementStats('totalMinted', quantity);
+
+      logger.info(`Minted ${quantity} NFTs successfully`);
+
+      return {
+        episode,
+        mintedNFTs: mintResult.serialNumbers,
+        transactionId: mintResult.transactionId,
+        explorerUrl: mintResult.explorerUrl
+      };
+    } catch (error) {
+      logger.error('Error minting episode NFT:', error);
+      throw new Error(`Failed to mint NFT: ${error.message}`);
+    }
+  }
+
+  /**
+   * STEP 4: Publish Episode (Go Live)
+   * Makes episode available for minting
+   */
+  async publishEpisode(episodeId, mintingConfig) {
+    try {
+      const episode = await Episode.findById(episodeId);
+      if (!episode) {
+        throw new Error('Episode not found');
+      }
+
+      // Update minting rules
+      episode.mintingRules = {
+        enabled: true,
+        startTime: mintingConfig.startTime || new Date(),
+        endTime: mintingConfig.endTime,
+        maxPerWallet: mintingConfig.maxPerWallet || 0,
+        whitelistOnly: mintingConfig.whitelistOnly || false,
+        whitelist: mintingConfig.whitelist || []
+      };
+
+      episode.isLive = true;
+      episode.status = 'published';
+      episode.publishedAt = new Date();
+
+      await episode.save();
+
+      logger.info(`Episode ${episodeId} published successfully`);
+
+      return episode;
+    } catch (error) {
+      logger.error('Error publishing episode:', error);
+      throw new Error(`Failed to publish episode: ${error.message}`);
+    }
+  }
+
+  /**
+   * STEP 5: Verify Access and Track Reading
+   * Checks ownership and creates read history
+   */
+  async verifyEpisodeAccess(episodeId, userAccountId, userId) {
+    try {
+      const episode = await Episode.findById(episodeId);
+      if (!episode) {
+        throw new Error('Episode not found');
+      }
+
+      // Check access rights
+      const hasAccess = await episode.canAccess(userAccountId);
+
+      if (!hasAccess && hasAccess !== 'preview') {
+        return {
+          hasAccess: false,
+          accessType: 'none',
+          message: 'You need to own an NFT or pay to access this content'
+        };
+      }
+
+      // Determine access type
+      let accessType = 'preview';
+      let nftOwnership = null;
+
+      if (hasAccess === true) {
+        // Find owned NFT
+        const ownedNFT = episode.mintedNFTs.find(nft => nft.owner === userAccountId);
+        if (ownedNFT) {
+          accessType = 'nft-owner';
+          nftOwnership = {
+            tokenId: episode.collectionTokenId,
+            serialNumber: ownedNFT.serialNumber
+          };
+        }
+      }
+
+      // Create or update read history
+      let readHistory = await ReadHistory.findOne({
+        user: userId,
+        episode: episodeId
+      });
+
+      if (!readHistory) {
+        readHistory = await ReadHistory.create({
+          user: userId,
+          userAccountId,
+          comic: episode.comic,
+          episode: episodeId,
+          accessType,
+          nftTokenId: nftOwnership?.tokenId,
+          nftSerialNumber: nftOwnership?.serialNumber,
+          progress: {
+            totalPages: episode.content.totalPages
+          }
+        });
+
+        // Increment unique readers
+        await episode.incrementStats('uniqueReaders');
+      }
+
+      // Increment read count
+      await episode.incrementStats('totalReads');
+
+      return {
+        hasAccess: true,
+        accessType,
+        nftOwnership,
+        readHistory,
+        content: accessType === 'nft-owner' ? episode.content : null
+      };
+    } catch (error) {
+      logger.error('Error verifying episode access:', error);
+      throw new Error(`Failed to verify access: ${error.message}`);
+    }
+  }
   /**
    * Get trending comics
    */
