@@ -29,7 +29,9 @@
       "Bash(src/routes/comicRoutes.js)",
       "Bash(server.js)",
       "Bash(tasklist:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(git remote get-url:*)",
+      "Bash(git reset:*)"
     ],
     "deny": [],
     "ask": []

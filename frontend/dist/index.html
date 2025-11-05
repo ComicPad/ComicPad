@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Comic Pad - Decentralized Comic Publishing</title>
+    <style>
+      /* Ensure WalletConnect modal is visible and on top */
+      wcm-modal,
+      w3m-modal,
+      wc-modal,
+      walletconnect-modal,
+      [id^="walletconnect"],
+      [class*="walletconnect"],
+      [class*="wcm-"],
+      [class*="w3m-"] {
+        z-index: 99999 !important;
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+      }
+
+      /* Ensure modal overlay/backdrop is visible */
+      wcm-modal::part(overlay),
+      w3m-modal::part(overlay),
+      [class*="wcm-overlay"],
+      [class*="w3m-overlay"] {
+        z-index: 99998 !important;
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+      }
+    </style>
+    <script type="module" crossorigin src="/assets/index-2g3-hG5z.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/vendor-CGQ6mEXs.js">
+    <link rel="modulepreload" crossorigin href="/assets/walletconnect-CM76SdVo.js">
+    <link rel="modulepreload" crossorigin href="/assets/hedera-DH14tgdt.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-GiVd7eb-.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
