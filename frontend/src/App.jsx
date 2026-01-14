@@ -3,6 +3,7 @@ import { Wallet, Menu, X } from 'lucide-react';
 import { useState, useContext } from 'react';
 import { WalletConnectContext } from './contexts/WalletConnectContext';
 import { openHashPackModal, hashPackWallet } from './services/wallets/hashpackClient';
+import ErrorBoundary from './components/common/ErrorBoundary';
 
 // Import all pages
 import Home from './pages/Home';
@@ -164,22 +165,24 @@ function App() {
 
       {/* Main */}
       <main>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/explore" element={<Explore />} />
-          <Route path="/marketplace" element={<Marketplace />} />
-          <Route path="/marketplace/history" element={<MarketplaceHistory />} />
-          <Route path="/comic/:id" element={<ComicDetail />} />
-          <Route path="/reader/:id" element={<EnhancedReader />} />
-          <Route path="/collection" element={<Collection />} />
-          <Route path="/profile" element={<Profile />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="/creator-studio" element={<CreatorStudio />} />
-          <Route path="/studio/create" element={<CreateComic />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <ErrorBoundary>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/explore" element={<Explore />} />
+            <Route path="/marketplace" element={<Marketplace />} />
+            <Route path="/marketplace/history" element={<MarketplaceHistory />} />
+            <Route path="/comic/:id" element={<ComicDetail />} />
+            <Route path="/reader/:id" element={<EnhancedReader />} />
+            <Route path="/collection" element={<Collection />} />
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="/creator-studio" element={<CreatorStudio />} />
+            <Route path="/studio/create" element={<CreateComic />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </ErrorBoundary>
       </main>
 
       {/* Comic Footer */}

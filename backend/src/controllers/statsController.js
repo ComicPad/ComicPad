@@ -1,5 +1,6 @@
 import { asyncHandler } from '../middleware/errorHandler.js';
-import { Comic, Listing } from '../models/index.js';
+import { Comic, Listing, Episode } from '../models/index.js';
+import MarketplaceTransaction from '../models/MarketplaceTransaction.js';
 
 /**
  * @desc    Get marketplace statistics
@@ -52,8 +53,39 @@ export const getMarketplaceStats = asyncHandler(async (req, res) => {
 export const getPlatformStats = asyncHandler(async (req, res) => {
   const totalComics = await Comic.countDocuments({ status: { $ne: 'draft' } });
   const totalPublished = await Comic.countDocuments({ status: 'published' });
-  const totalVolume = 0; // TODO: Calculate from transactions
+
+  // Calculate total volume from completed marketplace transactions
+  const volumeStats = await MarketplaceTransaction.aggregate([
+    {
+      $match: {
+        status: 'completed',
+        type: 'purchase'
+      }
+    },
+    {
+      $group: {
+        _id: null,
+        totalVolume: { $sum: '$price.amount' }
+      }
+    }
+  ]);
+
+  const totalVolume = volumeStats.length > 0 ? parseFloat(volumeStats[0].totalVolume.toFixed(2)) : 0;
   const totalCreators = await Comic.distinct('creator').length;
+
+  // Count unique NFT collectors from all episodes
+  const episodes = await Episode.find({}).select('mintedNFTs');
+  const uniqueCollectors = new Set();
+
+  episodes.forEach(episode => {
+    if (episode.mintedNFTs && episode.mintedNFTs.length > 0) {
+      episode.mintedNFTs.forEach(nft => {
+        if (nft.owner) {
+          uniqueCollectors.add(nft.owner);
+        }
+      });
+    }
+  });
 
   res.json({
     success: true,
@@ -62,7 +94,7 @@ export const getPlatformStats = asyncHandler(async (req, res) => {
       totalPublished,
       totalVolume,
       totalCreators,
-      totalCollectors: 0 // TODO: Count unique NFT owners
+      totalCollectors: uniqueCollectors.size
     }
   });
 });
